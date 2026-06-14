@@ -26,7 +26,7 @@ style.textContent = `
 `;
 document.head.appendChild(style);
 
-const VALID_TAGS = new Set(["P", "LI", "H1", "H2", "H3", "H4", "H5", "H6", "BLOCKQUOTE", "SPAN", "A", "TD", "TH", "ARTICLE"]);
+const VALID_TAGS = new Set(["P", "LI", "H1", "H2", "H3", "H4", "H5", "H6", "BLOCKQUOTE", "SPAN", "A", "TD", "TH", "ARTICLE", "DIV"]);
 
 function isValidTextElement(el: HTMLElement): boolean {
   if (!el || !el.tagName) return false;
@@ -41,7 +41,7 @@ function isValidTextElement(el: HTMLElement): boolean {
   }
 
   const text = el.innerText || el.textContent || "";
-  if (text.trim().length < 2) return false;
+  if (text.trim().length === 0) return false;
   const rect = el.getBoundingClientRect();
   if (rect.height > 600) return false;
   return true;
@@ -162,9 +162,84 @@ playButton.style.cursor = "pointer";
 playButton.style.boxShadow = "0 4px 12px rgba(37, 99, 235, 0.4)";
 playButton.style.opacity = "0";
 playButton.style.pointerEvents = "none";
-playButton.style.transition = "opacity 0.15s ease, background 0.2s";
+  playButton.style.transition = "opacity 0.15s ease, background 0.2s";
 
 document.body.appendChild(playButton);
+
+const floatingBar = document.createElement("div");
+floatingBar.id = "edge-tts-floating-bar";
+Object.assign(floatingBar.style, {
+  position: "fixed",
+  top: "50%",
+  right: "20px",
+  transform: "translateY(-50%) translateX(100px)",
+  backgroundColor: "rgba(15, 23, 42, 0.8)",
+  backdropFilter: "blur(8px)",
+  border: "1px solid rgba(255, 255, 255, 0.1)",
+  borderRadius: "12px",
+  padding: "8px",
+  display: "flex",
+  flexDirection: "column",
+  gap: "12px",
+  zIndex: "2147483647",
+  transition: "transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s",
+  opacity: "0",
+  pointerEvents: "none",
+  boxShadow: "0 10px 25px rgba(0, 0, 0, 0.3)"
+});
+
+const stopButton = document.createElement("button");
+stopButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2" ry="2"></rect></svg>`;
+Object.assign(stopButton.style, {
+  width: "36px",
+  height: "36px",
+  borderRadius: "8px",
+  border: "none",
+  backgroundColor: "rgba(239, 68, 68, 0.2)",
+  color: "#ef4444",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+  transition: "background-color 0.2s"
+});
+stopButton.onmouseenter = () => stopButton.style.backgroundColor = "rgba(239, 68, 68, 0.4)";
+stopButton.onmouseleave = () => stopButton.style.backgroundColor = "rgba(239, 68, 68, 0.2)";
+
+stopButton.onclick = () => {
+  stopSession();
+};
+
+floatingBar.appendChild(stopButton);
+document.body.appendChild(floatingBar);
+
+function stopSession() {
+  if (audioRef) {
+     audioRef.pause();
+  }
+  isPlaying = false;
+  isLoading = false;
+  activeTarget = null;
+  clearHighlight(true);
+  clearSentenceHover();
+  
+  floatingBar.style.transform = "translateY(-50%) translateX(100px)";
+  floatingBar.style.opacity = "0";
+  floatingBar.style.pointerEvents = "none";
+  
+  if (currentTarget) {
+     updatePlayButtonAppearance();
+  } else {
+     playButton.style.opacity = "0";
+     playButton.style.pointerEvents = "none";
+  }
+}
+
+function startSession() {
+  floatingBar.style.transform = "translateY(-50%) translateX(0)";
+  floatingBar.style.opacity = "1";
+  floatingBar.style.pointerEvents = "auto";
+}
 
 function syncPosition() {
   if (!currentTarget) return;
@@ -314,9 +389,9 @@ function handleSentenceHover(e: MouseEvent, validEl: HTMLElement) {
 
 document.addEventListener("click", (e) => {
   const target = e.target as HTMLElement;
-  if (target === playButton || playButton.contains(target)) return;
+  if (target === playButton || playButton.contains(target) || floatingBar.contains(target)) return;
 
-  if (hoveredValidEl) {
+  if (hoveredValidEl && activeTarget !== null) {
      e.preventDefault();
      e.stopPropagation();
 
@@ -353,7 +428,11 @@ document.addEventListener("mousemove", (e) => {
       hoverTimer = null;
     }
     
-    handleSentenceHover(e, validEl);
+    if (activeTarget !== null) {
+      handleSentenceHover(e, validEl);
+    } else {
+      clearSentenceHover();
+    }
     
     if (currentTarget !== validEl) {
       // Prevent jumping to an ancestor container when traversing padding
@@ -496,6 +575,7 @@ playButton.onclick = async (e: any) => {
 
   isLoading = true;
   activeTarget = currentTarget;
+  startSession();
   playButton.innerHTML = LOAD_SVG;
   playButton.children[0].animate([{transform: 'rotate(0deg)'}, {transform: 'rotate(360deg)'}], {duration: 1000, iterations: Infinity});
   playButton.style.background = "#475569"; 
@@ -545,7 +625,7 @@ playButton.onclick = async (e: any) => {
         playButton.innerHTML = PLAY_SVG;
         playButton.style.background = "#2563eb";
         
-        const nextEl = getNextValidElement(currentTarget!);
+        const nextEl = getNextValidElement(activeTarget!);
         if (nextEl) {
           currentTarget = nextEl;
           currentTextNode = null;
@@ -564,11 +644,7 @@ playButton.onclick = async (e: any) => {
             }
           }, 100);
         } else {
-          if (!playButton.matches(":hover")) {
-            playButton.style.opacity = "0";
-            playButton.style.pointerEvents = "none";
-            currentTarget = null;
-          }
+          stopSession();
         }
       };
 
