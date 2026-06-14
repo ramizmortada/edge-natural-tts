@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Aura TTS",
+  "version": "1.0.0",
+  "description": "Premium text-to-speech extension using Edge voices.",
+  "permissions": [
+    "storage",
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "Open TTS"
+  }
+}

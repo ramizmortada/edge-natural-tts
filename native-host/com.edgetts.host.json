@@ -1,0 +1,9 @@
+{
+  "name": "com.edgetts.host",
+  "description": "Edge TTS Host",
+  "path": "d:\\projects\\tts\\native-host\\tts-host.bat",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://imifckmicpapkaaikmalipkpilpjoibn/"
+  ]
+}
