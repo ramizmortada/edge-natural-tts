@@ -19,6 +19,10 @@ style.textContent = `
     color: inherit;
     border-radius: 3px;
   }
+  ::highlight(aura-sentence-hover) {
+    background-color: rgba(250, 204, 21, 0.4);
+    cursor: pointer;
+  }
 `;
 document.head.appendChild(style);
 
@@ -168,6 +172,11 @@ function syncPosition() {
 
 let activeTarget: HTMLElement | null = null;
 let currentHighlightTick: any = null;
+let activeFullText = "";
+let activeWordBoundaries: any[] = [];
+let hoveredAudioOffset: number | null = null;
+let lastSentenceStart = -1;
+const sentenceHighlightName = "aura-sentence-hover";
 
 function clearHighlight(stopTimer = true) {
   if (stopTimer && currentHighlightTick) {
@@ -179,8 +188,104 @@ function clearHighlight(stopTimer = true) {
   }
 }
 
+function handleSentenceHover(e: MouseEvent) {
+  if (!activeTarget || !activeTarget.contains(e.target as Node)) {
+     if ('highlights' in CSS) (CSS as any).highlights.delete(sentenceHighlightName);
+     hoveredAudioOffset = null;
+     lastSentenceStart = -1;
+     activeTarget && (activeTarget.style.cursor = "");
+     return;
+  }
+
+  const range = (document as any).caretRangeFromPoint(e.clientX, e.clientY);
+  if (!range) return;
+
+  const textNode = range.startContainer;
+  const offsetInNode = range.startOffset;
+  if (textNode.nodeType !== Node.TEXT_NODE) return;
+
+  let absoluteOffset = 0;
+  let found = false;
+
+  function traverse(node: Node) {
+    if (found) return;
+    if (node === textNode) {
+      absoluteOffset += offsetInNode;
+      found = true;
+      return;
+    }
+    if (node.nodeType === Node.TEXT_NODE) {
+      absoluteOffset += node.textContent?.length || 0;
+    } else {
+      for (const child of Array.from(node.childNodes)) {
+        traverse(child);
+      }
+    }
+  }
+  traverse(activeTarget);
+  if (!found) return;
+
+  const text = activeFullText;
+  let sentenceStart = 0;
+  let sentenceEnd = text.length;
+
+  for (let i = absoluteOffset; i >= 0; i--) {
+     if (i === 0) { sentenceStart = 0; break; }
+     if ((text[i] === '.' || text[i] === '?' || text[i] === '!') && (text[i+1] === ' ' || text[i+1] === '\n')) {
+         sentenceStart = i + 2;
+         break;
+     }
+     if (text[i] === '\n') {
+         sentenceStart = i + 1;
+         break;
+     }
+  }
+
+  for (let i = absoluteOffset; i < text.length; i++) {
+     if ((text[i] === '.' || text[i] === '?' || text[i] === '!') && (i === text.length - 1 || text[i+1] === ' ' || text[i+1] === '\n')) {
+         sentenceEnd = i + 1;
+         break;
+     }
+     if (text[i] === '\n') {
+         sentenceEnd = i;
+         break;
+     }
+  }
+
+  if (sentenceStart === lastSentenceStart) return;
+  lastSentenceStart = sentenceStart;
+
+  if (sentenceEnd > sentenceStart) {
+      const highlightRange = createRangeFromOffset(activeTarget, sentenceStart, sentenceEnd - sentenceStart);
+      if (highlightRange && 'highlights' in CSS) {
+         const highlight = new (window as any).Highlight(highlightRange);
+         (CSS as any).highlights.set(sentenceHighlightName, highlight);
+         activeTarget.style.cursor = "pointer";
+      }
+      
+      const firstWord = activeWordBoundaries.find(w => w.charOffset >= sentenceStart);
+      if (firstWord) {
+         hoveredAudioOffset = firstWord.audioOffsetMs;
+      } else {
+         hoveredAudioOffset = null;
+      }
+  }
+}
+
+document.addEventListener("click", (e) => {
+  if (isPlaying && hoveredAudioOffset !== null && audioRef) {
+     e.preventDefault();
+     e.stopPropagation();
+     audioRef.currentTime = hoveredAudioOffset / 1000;
+  }
+}, true);
+
 document.addEventListener("mousemove", (e) => {
-  if (isPlaying || isLoading) return;
+  if (isPlaying) {
+    handleSentenceHover(e);
+    return;
+  }
+  if (isLoading) return;
 
   const target = e.target as HTMLElement;
   
@@ -370,7 +475,8 @@ playButton.onclick = async (e: any) => {
       audioRef.play().catch(e => console.error("Initial play failed", e));
 
       let isFirstChunk = true;
-      const wordBoundaries: any[] = [];
+      activeWordBoundaries = [];
+      activeFullText = fullTextToRead;
       let sourceBuffer: SourceBuffer | null = null;
       const queue: Uint8Array[] = [];
       let lastCharOffset = 0;
@@ -430,7 +536,7 @@ playButton.onclick = async (e: any) => {
         if (!isPlaying || !audioRef) return;
         const currentTimeMs = audioRef.currentTime * 1000;
         
-        const currentWord = wordBoundaries.find(w => 
+        const currentWord = activeWordBoundaries.find(w => 
           currentTimeMs >= w.audioOffsetMs && 
           currentTimeMs <= (w.audioOffsetMs + w.durationMs)
         );
@@ -502,7 +608,7 @@ playButton.onclick = async (e: any) => {
           if (charOffset !== -1) {
             const charLength = wb.wordStr.length;
             lastCharOffset = charOffset + charLength;
-            wordBoundaries.push({ audioOffsetMs: wb.audioOffsetMs, durationMs: wb.durationMs, charOffset, charLength });
+            activeWordBoundaries.push({ audioOffsetMs: wb.audioOffsetMs, durationMs: wb.durationMs, charOffset, charLength });
           }
         }
         
@@ -553,7 +659,7 @@ playButton.onclick = async (e: any) => {
                if (charOffset !== -1) {
                  const charLength = wordStr.length;
                  lastCharOffset = charOffset + charLength;
-                 wordBoundaries.push({ audioOffsetMs, durationMs, charOffset, charLength });
+                 activeWordBoundaries.push({ audioOffsetMs, durationMs, charOffset, charLength });
                }
              }
           }
