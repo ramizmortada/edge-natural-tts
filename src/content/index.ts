@@ -188,6 +188,58 @@ Object.assign(floatingBar.style, {
   boxShadow: "0 10px 25px rgba(0, 0, 0, 0.3)"
 });
 
+const globalPlayPauseButton = document.createElement("button");
+Object.assign(globalPlayPauseButton.style, {
+  width: "36px",
+  height: "36px",
+  borderRadius: "8px",
+  border: "none",
+  backgroundColor: "rgba(37, 99, 235, 0.2)",
+  color: "#3b82f6",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+  transition: "background-color 0.2s"
+});
+globalPlayPauseButton.onmouseenter = () => globalPlayPauseButton.style.backgroundColor = "rgba(37, 99, 235, 0.4)";
+globalPlayPauseButton.onmouseleave = () => globalPlayPauseButton.style.backgroundColor = "rgba(37, 99, 235, 0.2)";
+
+function updateGlobalPlayPauseIcon() {
+  if (isPlaying) {
+    globalPlayPauseButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`;
+  } else {
+    globalPlayPauseButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
+  }
+}
+updateGlobalPlayPauseIcon();
+
+function setPlaying(val: boolean) {
+  isPlaying = val;
+  updateGlobalPlayPauseIcon();
+}
+
+globalPlayPauseButton.onclick = () => {
+  if (isPlaying && audioRef) {
+    audioRef.pause();
+    setPlaying(false);
+    clearHighlight(false);
+    if (currentTarget === activeTarget) {
+      playButton.innerHTML = PLAY_SVG;
+      playButton.style.background = "#2563eb";
+    }
+  } else if (!isPlaying && audioRef && activeTarget !== null) {
+    audioRef.play().catch(e => console.error("Resume failed", e));
+    setPlaying(true);
+    if (currentTarget === activeTarget) {
+      playButton.innerHTML = PAUSE_SVG;
+      playButton.style.background = "#ef4444";
+    }
+  }
+};
+floatingBar.appendChild(globalPlayPauseButton);
+
+
 const stopButton = document.createElement("button");
 stopButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2" ry="2"></rect></svg>`;
 Object.assign(stopButton.style, {
@@ -225,7 +277,7 @@ function stopSession() {
      activePreload.port.disconnect();
      activePreload = null;
   }
-  isPlaying = false;
+  setPlaying(false);
   isLoading = false;
   activeTarget = null;
   clearHighlight(true);
@@ -398,7 +450,12 @@ function handleSentenceHover(e: MouseEvent, validEl: HTMLElement) {
 
 document.addEventListener("click", (e) => {
   const target = e.target as HTMLElement;
-  if (target === playButton || playButton.contains(target) || floatingBar.contains(target)) return;
+  if (target === playButton || playButton.contains(target) || floatingBar.contains(target) || globalPlayPauseButton.contains(target)) return;
+
+  const selection = window.getSelection();
+  if (selection && selection.toString().trim().length > 0) {
+    return;
+  }
 
   if (hoveredValidEl && activeTarget !== null) {
      e.preventDefault();
@@ -557,14 +614,14 @@ playButton.onclick = async (e: any) => {
   if (isPlaying && audioRef) {
     if (currentTarget === activeTarget) {
       audioRef.pause();
-      isPlaying = false;
+      setPlaying(false);
       clearHighlight(false);
       playButton.innerHTML = PLAY_SVG;
       playButton.style.background = "#2563eb";
       return;
     } else {
       audioRef.pause();
-      isPlaying = false;
+      setPlaying(false);
       clearHighlight(true);
       if (activePort) {
         activePort.disconnect();
@@ -575,7 +632,7 @@ playButton.onclick = async (e: any) => {
 
   if (!isPlaying && audioRef && currentTarget === activeTarget && activeTarget !== null) {
     audioRef.play().catch(e => console.error("Resume failed", e));
-    isPlaying = true;
+    setPlaying(true);
     playButton.innerHTML = PAUSE_SVG;
     playButton.style.background = "#ef4444";
     return;
@@ -633,7 +690,7 @@ playButton.onclick = async (e: any) => {
       });
 
       audioRef.onended = () => {
-        isPlaying = false;
+        setPlaying(false);
         clearHighlight();
         playButton.innerHTML = PLAY_SVG;
         playButton.style.background = "#2563eb";
@@ -724,7 +781,7 @@ playButton.onclick = async (e: any) => {
         if (preloadedSession.chunks.length > 0) {
           isFirstChunk = false;
           isLoading = false;
-          isPlaying = true;
+          setPlaying(true);
           playButton.innerHTML = PAUSE_SVG;
           playButton.style.background = "#ef4444"; 
         }
@@ -773,7 +830,7 @@ playButton.onclick = async (e: any) => {
           if (isFirstChunk) {
             isFirstChunk = false;
             isLoading = false;
-            isPlaying = true;
+            setPlaying(true);
             playButton.innerHTML = PAUSE_SVG;
             playButton.style.background = "#ef4444"; 
           }
