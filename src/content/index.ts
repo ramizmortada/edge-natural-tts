@@ -166,10 +166,11 @@ function syncPosition() {
   playButton.style.left = `${left}px`;
 }
 
+let activeTarget: HTMLElement | null = null;
 let currentHighlightTick: any = null;
 
-function clearHighlight() {
-  if (currentHighlightTick) {
+function clearHighlight(stopTimer = true) {
+  if (stopTimer && currentHighlightTick) {
     clearInterval(currentHighlightTick);
     currentHighlightTick = null;
   }
@@ -311,17 +312,17 @@ playButton.onclick = async (e: any) => {
   if (isPlaying && audioRef) {
     audioRef.pause();
     isPlaying = false;
-    clearHighlight();
+    clearHighlight(false);
     playButton.innerHTML = PLAY_SVG;
     playButton.style.background = "#2563eb";
-    
-    setTimeout(() => {
-      if (!playButton.matches(":hover")) {
-        playButton.style.opacity = "0";
-        playButton.style.pointerEvents = "none";
-        currentTarget = null;
-      }
-    }, 100);
+    return;
+  }
+
+  if (!isPlaying && audioRef && currentTarget === activeTarget && activeTarget !== null) {
+    audioRef.play().catch(e => console.error("Resume failed", e));
+    isPlaying = true;
+    playButton.innerHTML = PAUSE_SVG;
+    playButton.style.background = "#ef4444";
     return;
   }
 
@@ -346,6 +347,7 @@ playButton.onclick = async (e: any) => {
   if (!fullTextToRead || !fullTextToRead.trim()) return;
 
   isLoading = true;
+  activeTarget = currentTarget;
   playButton.innerHTML = LOAD_SVG;
   playButton.children[0].animate([{transform: 'rotate(0deg)'}, {transform: 'rotate(360deg)'}], {duration: 1000, iterations: Infinity});
   playButton.style.background = "#475569"; 
