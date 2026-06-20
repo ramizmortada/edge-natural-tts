@@ -28,6 +28,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       
       queue = [];
       isFirstAppend = true;
+      sourceBuffer = null;
       audioRef = new Audio();
       mediaSource = new MediaSource();
       audioRef.src = URL.createObjectURL(mediaSource);
@@ -72,6 +73,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
       break;
 
+    case "APPEND_AUDIO_ARRAY":
+      for (const b64 of msg.data) {
+        queue.push(base64ToUint8Array(b64));
+      }
+      if (sourceBuffer && !sourceBuffer.updating && queue.length > 0) {
+        sourceBuffer.appendBuffer(queue.shift()!);
+      }
+      break;
+
     case "END_STREAM":
       if (!mediaSource) break;
       function tryEnd() {
@@ -80,10 +90,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           if (sourceBuffer && sourceBuffer.updating) {
             sourceBuffer.addEventListener('updateend', tryEnd, { once: true });
           } else if (queue.length > 0) {
-            sourceBuffer?.addEventListener('updateend', tryEnd, { once: true });
+            if (sourceBuffer) {
+              sourceBuffer.addEventListener('updateend', tryEnd, { once: true });
+            } else {
+              // Wait for sourceBuffer to be created by the sourceopen listener
+              setTimeout(tryEnd, 50);
+            }
           } else {
             try { mediaSource.endOfStream(); } catch(e) {}
           }
+        } else if (mediaSource.readyState === 'closed') {
+          mediaSource.addEventListener('sourceopen', tryEnd, { once: true });
         }
       }
       tryEnd();

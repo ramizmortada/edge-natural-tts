@@ -18,43 +18,149 @@ async function setupOffscreenDocument() {
 let activeClientPort: chrome.runtime.Port | null = null;
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  // Forward offscreen playback events to the active content script port
   if (msg.type === "PLAYBACK_ENDED" || msg.type === "TIME_UPDATE") {
     if (activeClientPort) {
       try {
         activeClientPort.postMessage(msg);
       } catch (e) {
-        // Port disconnected
       }
     }
   }
 });
 
+interface PreloadedSession {
+  text: string;
+  audioChunks: string[];
+  wordBoundaries: any[];
+  isFinished: boolean;
+  error: string | null;
+  nativePort: chrome.runtime.Port | null;
+  isActive: boolean;
+}
+
+const preloadCache = new Map<string, PreloadedSession>();
+
+function cleanPreloadCache() {
+  if (preloadCache.size > 10) {
+    const firstKey = preloadCache.keys().next().value;
+    const session = preloadCache.get(firstKey);
+    if (session?.nativePort) session.nativePort.disconnect();
+    preloadCache.delete(firstKey);
+  }
+}
+
+function startNativeSession(text: string, voice: string, rateString: string): PreloadedSession {
+  if (preloadCache.has(text)) {
+    const cached = preloadCache.get(text)!;
+    if (cached.error) {
+      preloadCache.delete(text); // Retry if the preloaded session errored out
+    } else {
+      return cached;
+    }
+  }
+  cleanPreloadCache();
+
+  const session: PreloadedSession = {
+    text, audioChunks: [], wordBoundaries: [], isFinished: false, error: null, nativePort: null, isActive: false
+  };
+  preloadCache.set(text, session);
+
+  try {
+    const nativePort = chrome.runtime.connectNative("com.edgetts.host");
+    session.nativePort = nativePort;
+
+    nativePort.onDisconnect.addListener(() => {
+      if (!session.isFinished) {
+         session.error = chrome.runtime.lastError ? chrome.runtime.lastError.message! : "Native host disconnected unexpectedly.";
+         if (session.isActive && activeClientPort) {
+           activeClientPort.postMessage({ type: "error", error: session.error });
+         }
+      }
+    });
+
+    nativePort.onMessage.addListener((nativeMsg) => {
+      if (nativeMsg.type === "audio") {
+        session.audioChunks.push(nativeMsg.data);
+        if (session.isActive) {
+          chrome.runtime.sendMessage({ target: "offscreen", type: "APPEND_AUDIO", data: nativeMsg.data }).catch(()=>{});
+        }
+      } else if (nativeMsg.type === "WordBoundary") {
+        const wb = { type: "WordBoundary", offset: nativeMsg.offset, duration: nativeMsg.duration, textObj: nativeMsg.textObj };
+        session.wordBoundaries.push(wb);
+        if (session.isActive && activeClientPort) {
+          activeClientPort.postMessage(wb);
+        }
+      } else if (nativeMsg.type === "end") {
+        session.isFinished = true;
+        session.nativePort?.disconnect();
+        session.nativePort = null;
+        if (session.isActive) {
+          if (activeClientPort) activeClientPort.postMessage({ type: "end" });
+          chrome.runtime.sendMessage({ target: "offscreen", type: "END_STREAM" }).catch(()=>{});
+        }
+      } else if (nativeMsg.type === "error") {
+        session.error = nativeMsg.error;
+        session.nativePort?.disconnect();
+        session.nativePort = null;
+        if (session.isActive) {
+          if (activeClientPort) activeClientPort.postMessage({ type: "error", error: session.error });
+          chrome.runtime.sendMessage({ target: "offscreen", type: "STOP" }).catch(()=>{});
+        }
+      }
+    });
+
+    nativePort.postMessage({ type: "START", text, voice, rateString });
+  } catch (e: any) {
+    session.error = e.message || e.toString();
+  }
+
+  return session;
+}
+
+const preloadQueue: {text: string, voice: string, rateString: string}[] = [];
+let isPreloading = false;
+
+async function processPreloadQueue() {
+  if (isPreloading) return;
+  isPreloading = true;
+  while (preloadQueue.length > 0) {
+    const item = preloadQueue.shift()!;
+    if (preloadCache.has(item.text)) continue;
+
+    const session = startNativeSession(item.text, item.voice, item.rateString);
+    if (!session.isFinished && !session.error) {
+      await new Promise<void>((resolve) => {
+        const check = setInterval(() => {
+          if (session.isFinished || session.error) {
+            clearInterval(check);
+            resolve();
+          }
+        }, 100);
+      });
+    }
+  }
+  isPreloading = false;
+}
+
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== "tts-stream") return;
 
-  let nativePort: chrome.runtime.Port | null = null;
-  let isActive = true;
   let isSessionPort = false;
 
   port.onDisconnect.addListener(() => {
-    isActive = false;
     if (activeClientPort === port) {
       activeClientPort = null;
     }
-    // Only stop offscreen audio if this was the port that started a session
     if (isSessionPort) {
       chrome.runtime.sendMessage({ target: "offscreen", type: "STOP" }).catch(()=>{});
-    }
-    if (nativePort) {
-      nativePort.disconnect();
-      nativePort = null;
     }
   });
 
   port.onMessage.addListener(async (msg) => {
-    if (msg.type === "START") {
-      // This port is now the active session port
+    if (msg.type === "PRELOAD") {
+      preloadQueue.push({ text: msg.text, voice: msg.voice, rateString: msg.rateString });
+      processPreloadQueue();
+    } else if (msg.type === "START") {
       isSessionPort = true;
       activeClientPort = port;
 
@@ -62,53 +168,34 @@ chrome.runtime.onConnect.addListener((port) => {
         await setupOffscreenDocument();
         chrome.runtime.sendMessage({ target: "offscreen", type: "INIT_AUDIO" }).catch(()=>{});
 
-        // Connect to the native messaging host
-        nativePort = chrome.runtime.connectNative("com.edgetts.host");
-        
-        nativePort.onDisconnect.addListener(() => {
-          if (chrome.runtime.lastError) {
-            console.error("Native host disconnected:", chrome.runtime.lastError);
-            if (isActive) {
-              port.postMessage({ type: "error", error: "Native host disconnected. Did you run install.bat and set the correct extension ID?" });
-            }
-          }
-        });
-
-        nativePort.onMessage.addListener((nativeMsg) => {
-          if (!isActive) return;
-
-          if (nativeMsg.type === "audio") {
-             chrome.runtime.sendMessage({ target: "offscreen", type: "APPEND_AUDIO", data: nativeMsg.data }).catch(()=>{});
-          } else if (nativeMsg.type === "WordBoundary") {
-             port.postMessage({
-               type: "WordBoundary",
-               offset: nativeMsg.offset,
-               duration: nativeMsg.duration,
-               textObj: nativeMsg.textObj
-             });
-          } else if (nativeMsg.type === "end") {
-             port.postMessage({ type: "end" });
-             chrome.runtime.sendMessage({ target: "offscreen", type: "END_STREAM" }).catch(()=>{});
-             nativePort?.disconnect();
-          } else if (nativeMsg.type === "error") {
-             port.postMessage({ type: "error", error: nativeMsg.error });
-             chrome.runtime.sendMessage({ target: "offscreen", type: "STOP" }).catch(()=>{});
-             nativePort?.disconnect();
-          }
-        });
-
-        // Forward the START message to the native host
-        nativePort.postMessage({
-          type: "START",
-          text: msg.text,
-          voice: msg.voice,
-          rateString: msg.rateString
-        });
-        
-      } catch (error: any) {
-        if (isActive) {
-          port.postMessage({ type: "error", error: error.message || error.toString() });
+        // Deactivate all current sessions
+        for (const s of preloadCache.values()) {
+          s.isActive = false;
         }
+
+        const session = startNativeSession(msg.text, msg.voice, msg.rateString);
+        session.isActive = true;
+
+        if (session.error) {
+          port.postMessage({ type: "error", error: session.error });
+          return;
+        }
+
+        // Catch up offscreen with already downloaded chunks
+        if (session.audioChunks.length > 0) {
+          chrome.runtime.sendMessage({ target: "offscreen", type: "APPEND_AUDIO_ARRAY", data: session.audioChunks }).catch(()=>{});
+        }
+        if (session.wordBoundaries.length > 0) {
+          port.postMessage({ type: "WordBoundaryArray", data: session.wordBoundaries });
+        }
+
+        if (session.isFinished) {
+          port.postMessage({ type: "end" });
+          chrome.runtime.sendMessage({ target: "offscreen", type: "END_STREAM" }).catch(()=>{});
+        }
+
+      } catch (error: any) {
+        port.postMessage({ type: "error", error: error.message || error.toString() });
       }
     } else if (msg.type === "PLAY") {
       chrome.runtime.sendMessage({ target: "offscreen", type: "PLAY" }).catch(()=>{});
@@ -116,10 +203,6 @@ chrome.runtime.onConnect.addListener((port) => {
       chrome.runtime.sendMessage({ target: "offscreen", type: "PAUSE" }).catch(()=>{});
     } else if (msg.type === "STOP") {
       chrome.runtime.sendMessage({ target: "offscreen", type: "STOP" }).catch(()=>{});
-      if (nativePort) {
-        nativePort.disconnect();
-        nativePort = null;
-      }
     } else if (msg.type === "SEEK") {
       chrome.runtime.sendMessage({ target: "offscreen", type: "SEEK", offset: msg.offset }).catch(()=>{});
     }

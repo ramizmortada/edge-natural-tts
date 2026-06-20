@@ -676,6 +676,7 @@ playButton.onclick = async (e: any, forceTarget?: HTMLElement) => {
       let lastCharOffset = 0;
 
       const handlePlaybackEnded = () => {
+        isLoading = false;
         setPlaying(false);
         clearHighlight();
         playButton.innerHTML = PLAY_SVG;
@@ -781,10 +782,30 @@ playButton.onclick = async (e: any, forceTarget?: HTMLElement) => {
                 }
               }
           }
+        } else if (msg.type === "WordBoundaryArray") {
+          for (const wb of msg.data) {
+             const audioOffsetMs = wb.offset / 10000;
+             const durationMs = wb.duration / 10000;
+             const wordStr = wb.textObj || "";
+             if (wordStr.length > 0) {
+                const charOffset = fullTextToRead.indexOf(wordStr, lastCharOffset);
+                if (charOffset !== -1) {
+                  const charLength = wordStr.length;
+                  lastCharOffset = charOffset + charLength;
+                  activeWordBoundaries.push({ audioOffsetMs, durationMs, charOffset, charLength });
+                  
+                  if (pendingSeekCharOffset !== null && charOffset >= pendingSeekCharOffset) {
+                     activePort?.postMessage({ type: "SEEK", offset: audioOffsetMs / 1000 });
+                     pendingSeekCharOffset = null;
+                  }
+                }
+              }
+          }
         } else if (msg.type === "end") {
           // offscreen handles the actual media ending
         } else if (msg.type === "error") {
           console.error("Stream error from background:", msg.error);
+          alert("Aura TTS Error: " + msg.error);
           stopSession();
         }
       });
@@ -795,6 +816,20 @@ playButton.onclick = async (e: any, forceTarget?: HTMLElement) => {
           currentHighlightTick = null;
         }
       });
+
+      // Preload the next 2 chunks
+      let nextPreloadEl = getNextValidElement(activeTarget!);
+      for (let i = 0; i < 2; i++) {
+        if (nextPreloadEl) {
+          const nextText = extractRawText(nextPreloadEl);
+          if (nextText.trim()) {
+            activePort.postMessage({ type: "PRELOAD", text: nextText, voice, rateString });
+          }
+          nextPreloadEl = getNextValidElement(nextPreloadEl);
+        } else {
+          break;
+        }
+      }
 
      } catch (innerError) {
        console.error("TTS generation failed (inner):", innerError);
