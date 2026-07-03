@@ -1,0 +1,41 @@
+name: Build and Release Extension
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers when you push a tag like v1.0.0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        # Uses npm install since you have a package-lock.json
+        run: npm ci
+
+      - name: Build extension
+        run: npm run build
+
+      - name: Zip extension
+        run: |
+          cd out
+          zip -r ../edge-natural-tts.zip .
+          cd ..
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: edge-natural-tts.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

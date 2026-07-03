@@ -8,6 +8,36 @@ let hoverTimer: any = null;
 let syncInterval: any = null;
 let activeHighlightName = "edge-tts-highlight";
 let currentTextNode: Node | null = null;
+let isSiteIgnored = false;
+
+function checkIgnoredSites(ignoredSites: string[]) {
+  const currentUrl = window.location.href;
+  const currentDomain = window.location.hostname;
+  isSiteIgnored = ignoredSites.some((site: string) => {
+    return currentUrl.includes(site) || currentDomain.includes(site);
+  });
+  
+  if (isSiteIgnored) {
+    if (typeof stopSession === 'function') stopSession();
+    if (typeof playButton !== 'undefined') playButton.style.display = 'none';
+    if (typeof floatingBar !== 'undefined') floatingBar.style.display = 'none';
+  } else {
+    if (typeof playButton !== 'undefined') playButton.style.display = 'flex';
+    if (typeof floatingBar !== 'undefined') floatingBar.style.display = 'flex';
+  }
+}
+
+try {
+  chrome.storage.local.get(["ignoredSites"], (result) => {
+    checkIgnoredSites(result.ignoredSites || []);
+  });
+
+  chrome.storage.onChanged.addListener((changes, namespace) => {
+    if (namespace === 'local' && changes.ignoredSites) {
+      checkIgnoredSites(changes.ignoredSites.newValue || []);
+    }
+  });
+} catch (e) {}
 
 // Inject highlight styles
 const style = document.createElement("style");
@@ -501,6 +531,7 @@ function handleSentenceHover(e: MouseEvent, validEl: HTMLElement) {
 }
 
 document.addEventListener("click", (e) => {
+  if (isSiteIgnored) return;
   const target = e.target as HTMLElement;
   if (target === playButton || playButton.contains(target) || floatingBar.contains(target) || globalPlayPauseButton.contains(target)) return;
 
@@ -526,6 +557,7 @@ document.addEventListener("click", (e) => {
 }, true);
 
 document.addEventListener("mousemove", (e) => {
+  if (isSiteIgnored) return;
   if (isLoading) return;
 
   const target = e.target as HTMLElement;
@@ -608,7 +640,7 @@ function isExtensionValid(): boolean {
 
 playButton.onclick = async (e: any, forceTarget?: HTMLElement) => {
   if (!isExtensionValid()) {
-    alert("Aura TTS: The extension was updated or reloaded. Please refresh the page to continue.");
+    alert("Edge Natural TTS: The extension was updated or reloaded. Please refresh the page to continue.");
     return;
   }
 
@@ -734,7 +766,7 @@ playButton.onclick = async (e: any, forceTarget?: HTMLElement) => {
 
       if (!isExtensionValid()) {
         stopSession();
-        alert("Aura TTS: The extension was updated or reloaded. Please refresh the page.");
+        alert("Edge Natural TTS: The extension was updated or reloaded. Please refresh the page.");
         return;
       }
       activePort = chrome.runtime.connect({ name: "tts-stream" });
@@ -805,7 +837,7 @@ playButton.onclick = async (e: any, forceTarget?: HTMLElement) => {
           // offscreen handles the actual media ending
         } else if (msg.type === "error") {
           console.error("Stream error from background:", msg.error);
-          alert("Aura TTS Error: " + msg.error);
+          alert("Edge Natural TTS Error: " + msg.error);
           stopSession();
         }
       });

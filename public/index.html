@@ -40,6 +40,14 @@
       </div>
       <input type="range" id="rate-slider" min="-50" max="100" value="0">
     </div>
+
+    <div class="field" style="margin-top: 16px;">
+      <div class="field-header">
+        <label>Ignored Sites</label>
+      </div>
+      <textarea id="ignored-sites" rows="3" placeholder="example.com&#10;github.com" style="width: 100%; border-radius: 6px; border: 1px solid #e2e8f0; padding: 8px; font-family: inherit; font-size: 14px; box-sizing: border-box; resize: vertical;"></textarea>
+      <p style="font-size: 11px; color: #64748b; margin-top: 4px; margin-bottom: 0;">One domain per line. TTS won't load on these sites.</p>
+    </div>
   </div>
 
   <script src="popup.js"></script>
