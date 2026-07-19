@@ -1,6 +1,5 @@
 body {
   width: 320px;
-  height: 400px;
   margin: 0;
   background-color: #000;
   background-image: linear-gradient(to bottom, #171717, #000);
@@ -8,36 +7,6 @@ body {
   font-family: system-ui, -apple-system, sans-serif;
   padding: 16px;
   box-sizing: border-box;
-}
-
-.header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 24px;
-  margin-top: 8px;
-}
-
-.icon-box {
-  background-color: rgba(37, 99, 235, 0.2);
-  padding: 8px;
-  border-radius: 12px;
-}
-
-.title {
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: -0.5px;
-  margin: 0;
-}
-
-.card {
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(24px);
-  border-radius: 16px;
-  padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -47,8 +16,6 @@ body {
   font-size: 14px;
   color: #d4d4d8;
   text-align: center;
-  margin-top: 8px;
-  margin-bottom: 16px;
 }
 
 .field {
@@ -93,6 +60,11 @@ select {
   outline: none;
   appearance: none;
   font-family: inherit;
+}
+
+option {
+  background-color: #1e293b;
+  color: #f8fafc;
 }
 
 select:focus {

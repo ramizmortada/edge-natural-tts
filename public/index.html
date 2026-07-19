@@ -7,14 +7,8 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="header">
-    <div class="icon-box">
-      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
-    </div>
-    <h1 class="title">Edge TTS</h1>
-  </div>
 
-  <div class="card">
+
     <p class="description">
       Hover over text on any webpage. Click the Play icon that appears.
     </p>
@@ -33,7 +27,7 @@
       </select>
     </div>
 
-    <div class="field" style="margin-top: 16px;">
+    <div class="field">
       <div class="field-header">
         <label>Speed</label>
         <span id="speed-label" class="speed-badge">0%</span>
@@ -41,14 +35,13 @@
       <input type="range" id="rate-slider" min="-50" max="100" value="0">
     </div>
 
-    <div class="field" style="margin-top: 16px;">
+    <div class="field">
       <div class="field-header">
-        <label>Ignored Sites</label>
+        <label>Status on this site</label>
       </div>
-      <textarea id="ignored-sites" rows="3" placeholder="example.com&#10;github.com" style="width: 100%; border-radius: 6px; border: 1px solid #e2e8f0; padding: 8px; font-family: inherit; font-size: 14px; box-sizing: border-box; resize: vertical;"></textarea>
-      <p style="font-size: 11px; color: #64748b; margin-top: 4px; margin-bottom: 0;">One domain per line. TTS won't load on these sites.</p>
+      <button id="toggle-site-btn" style="width: 100%; padding: 8px; border-radius: 6px; cursor: pointer; border: 1px solid #e2e8f0; background: #f8fafc; font-family: inherit; font-size: 14px; font-weight: 500; transition: all 0.2s;">Loading...</button>
     </div>
-  </div>
+
 
   <script src="popup.js"></script>
 </body>
